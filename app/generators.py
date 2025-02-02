@@ -9,26 +9,28 @@ load_dotenv()
 
 
 async def generate(text):
+    #Получения токена доступа
     url = "https://ngw.devices.sberbank.ru:9443/api/v2/oauth"
-
     payload={
     'scope': 'GIGACHAT_API_PERS'
     }
     headers = {
     'Content-Type': 'application/x-www-form-urlencoded',
     'Accept': 'application/json',
-    'RqUID': str(uuid4()),
-    'Authorization': f'Basic {os.getenv("AI_TOKEN")}'
+    'RqUID': str(uuid4()), #Генерируем id
+    'Authorization': f'Basic {os.getenv("AI_TOKEN")}' #Ключ для авторизации
     }
-    response = requests.request("POST", url, headers=headers, data=payload, verify=False)
-    access_token = json.loads(response.text)['access_token']
+    response = requests.request("POST", url, headers=headers, data=payload, verify=False) #Запрос для получение токена доступа
+    access_token = json.loads(response.text)['access_token'] #Токен доступа
+    
+    #Получение ответа от GigaChat на сообщение
     url = "https://gigachat.devices.sberbank.ru/api/v1/chat/completions"
     payload = json.dumps({
     "model": "GigaChat",
     "messages": [
         {
         "role": "user",
-        "content": text
+        "content": text #Текст запроса
         }
     ],
     "stream": False,
@@ -40,5 +42,5 @@ async def generate(text):
     'Authorization': f'Bearer {access_token}'
     }
 
-    response = requests.request("POST", url, headers=headers, data=payload, verify=False)
+    response = requests.request("POST", url, headers=headers, data=payload, verify=False) #запрос для получения ответа от GigaChat на сообщение
     return json.loads(response.text)['choices'][0]['message']['content']
