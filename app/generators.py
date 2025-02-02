@@ -30,7 +30,7 @@ async def generate(text):
     "messages": [
         {
         "role": "user",
-        "content": text #Текст запроса
+        "content": text #Текст сообщения
         }
     ],
     "stream": False,
