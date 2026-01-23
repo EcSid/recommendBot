@@ -65,7 +65,7 @@ async def on_start(message: Message, state: FSMContext):
   
 @router.message(Req.ready_to_start)
 async def on_ready_to_start(message: Message, state: FSMContext):
-  text = 'Отлично, приступим! Напиши свои любимые фильмы. Каждое название фильма должно идти отдельным сообщением. Когда закончишь, напиши "Я закончил".\nСнизу приведён пример ввода'
+  text = 'Отлично, приступим! Напиши свои любимые фильмы. Каждое название фильма должно идти отдельным сообщением. Когда закончишь, напиши "Я закончил".\nСнизу приведён пример ввода. Строго следуй ему'
   await message.answer(f'{text}<a href="https://i.ibb.co/KchfJ5hc/image-2025-11-30-13-48-18.png">:</a>',
     parse_mode="HTML")
   
@@ -114,8 +114,8 @@ async def on_picks_favourite_films(message: Message, state: FSMContext):
   
 async def on_stop_picking_favourite_films(message: Message, state: FSMContext):
   try:
-    text = 'Хорошо! Теперь напиши свои любимые песни. Каждое название песни должно идти отдельным сообщением и вместе с её автором. Когда закончишь, напиши "Я закончил".\nСнизу приведён пример ввода'
-    await message.answer(f'{text}<a href="https://i.ibb.co/j9GTY3sg/image-2025-11-30-13-46-07.png">:</a>',
+    text = 'Хорошо! Теперь напиши свои любимые песни. Каждое название песни должно идти отдельным сообщением и вместе с её автором. Когда закончишь, напиши "Я закончил".\nСнизу приведён пример ввода. Строго следуй ему'
+    await message.answer(f'{text}<a href="https://i.ibb.co/zhHpvHnH/image-2026-01-23-21-30-56.png">:</a>',
     parse_mode="HTML")
     
     await state.set_state(Req.picks_favourite_songs)
@@ -145,7 +145,7 @@ async def on_picks_favourite_songs(message: Message, state: FSMContext):
     
     s = message.text
     try:
-      author, song_name = [x.strip() for x in s.split("-")]
+      author, song_name = [x.strip() for x in s.split(":")]
       author, song_name = await get_song_title_and_author(song_name, author)
       s = [author, song_name]
       if song_name == None or author == None:
@@ -166,7 +166,7 @@ async def on_picks_favourite_songs(message: Message, state: FSMContext):
     
 async def on_stop_picking_favourite_songs(message: Message, state: FSMContext):
   try:
-    text = 'Хорошо! Теперь напиши свои любимые книги. Каждое название книги должно идти отдельным сообщением. Когда закончишь, напиши "Я закончил".\nСнизу приведён пример ввода'
+    text = 'Хорошо! Теперь напиши свои любимые книги. Каждое название книги должно идти отдельным сообщением. Когда закончишь, напиши "Я закончил".\nСнизу приведён пример ввода. Строго следуй ему'
     await message.answer(f'{text}<a href="https://i.ibb.co/3yqJf4Rn/image-2025-11-30-13-47-15.png">:</a>',
     parse_mode="HTML")
     

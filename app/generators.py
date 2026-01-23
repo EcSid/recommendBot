@@ -26,52 +26,36 @@ async def generate(content):
 
 async def get_movie_original_name(name):
     API_KEY = os.getenv("KP_TOKEN")
-    url = f"https://api.kinopoisk.dev/v1.4/movie/search?page=1&limit=1&query={name}"
-    headers = {
-        "X-API-KEY": API_KEY
-    }
+    url = f"https://api.poiskkino.dev/v1.4/movie/search"
+    headers = {"X-API-KEY": API_KEY}
+    params = {"page": 1, "limit": 1, "query": name}
     async with aiohttp.ClientSession() as session:
         try:
-            async with session.get(url, headers=headers) as response:
+            async with session.get(url, headers=headers, params=params) as response:
                 if response.status == 200:
                     data = await response.json()
-                    # Проверяем, что есть результаты и это действительно фильм/сериал
                     if not data.get("docs") or len(data["docs"]) == 0:
                         return None
-                    
                     movie = data["docs"][0]
-                    
-                    # Дополнительные проверки что это фильм, а не что-то другое
-                    if (not movie.get('name') or 
-                        not movie.get('type') or 
-                        movie.get('type') not in ['movie', 'tv-series', 'cartoon', 'anime']):
+                    if not movie.get('name') or movie.get('type') not in ['movie', 'tv-series', 'cartoon', 'anime']:
                         return None
-                    
-                    original_name = (
-                        movie.get('alternativeName') or  # Альтернативное название
-                        movie.get('enName') or          # Английское название
-                        movie.get('name')               # Основное название
-                    )
-                    
-                    return original_name
-                else:
-                    return None
-        except:
+                    return movie.get('alternativeName') or movie.get('enName') or movie.get('name')
+                return None
+        except Exception:
             return None
 
 async def get_movie_in_rus(name):
     API_KEY = os.getenv("KP_TOKEN")
-    url = f"https://api.kinopoisk.dev/v1.4/movie/search?page=1&limit=1&query={name}"
-    headers = {
-        "X-API-KEY": API_KEY
-    }
+    url = f"https://api.poiskkino.dev/v1.4/movie/search"
+    headers = {"X-API-KEY": API_KEY}
+    params = {"page": 1, "limit": 1, "query": name}
     async with aiohttp.ClientSession() as session:
         try:
-            async with session.get(url, headers=headers) as response:
+            async with session.get(url, headers=headers, params=params) as response:
                 if response.status == 200:
                     data = await response.json()
-                    return data["docs"][0]['name'], data["docs"][0]['year'], data["docs"][0]['description']
-                else:
-                    return None
-        except:
+                    movie_data = data["docs"][0]
+                    return movie_data.get('name'), movie_data.get('year'), movie_data.get('description')
+                return None
+        except Exception:
             return None
