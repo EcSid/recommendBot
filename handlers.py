@@ -152,7 +152,7 @@ async def on_picks_favourite_songs(message: Message, state: FSMContext):
         raise Exception
     except:
       await loading_msg.delete()
-      await message.answer('Похоже, что такой песни не существует, или ты вводил её не следуя вышеуказанным инструкциям. Попробуй снова')
+      await message.answer('Похоже, что такой песни не существует. Попробуй снова')
       return 
     
     prevSongs = (await state.get_data())["picks_favourite_songs"]

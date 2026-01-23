@@ -7,7 +7,7 @@ async def get_book(title):
     
     # Кодируем запрос для URL
     query = quote(f"intitle:{title}")
-    url = f"https://www.googleapis.com/books/v1/volumes?q={query}&langRestrict=ru&maxResults=1&key={os.getenv("GOOGLE_BOKS_API_KEY")}"
+    url = f"https://www.googleapis.com/books/v1/volumes?q={query}&langRestrict=ru&maxResults=1&key={os.getenv('GOOGLE_BOKS_API_KEY')}"
     
     try:
         async with aiohttp.ClientSession() as session:
