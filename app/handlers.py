@@ -6,11 +6,14 @@ from aiogram.fsm.state import State, StatesGroup
 from aiogram.fsm.context import FSMContext
 from PIL import Image
 from aiogram.types import BufferedInputFile
-from app.generators import generate
+from app.generators import generate, get_movie_original_name, get_movie_in_rus
+from app.generators_music import music_is_exist, get_song_title_and_author
 import app.keyboards as kb
-import os
+from app.generators_books import get_book
 from dotenv import load_dotenv
 import app.database as db
+import app.helpers as hp
+import json
 
 from app.helpers import sort_arr_to_most_popular, it_is_author, it_is_work_name, get_choice_in_art,  word_in_filter_choice, choice_in_author #Импортируем вспомогательные функции
 
@@ -22,6 +25,10 @@ router = Router()
 #state
 #Состояние запроса для рекомендации
 class Req(StatesGroup):
+  ready_to_start = State()
+  picks_favourite_films = State()
+  picks_favourite_songs = State()
+  picks_favourite_books = State()
   art = State()
   filter_to_search = State()
   message_to_recommend = State()
@@ -39,239 +46,465 @@ class Res(StatesGroup):
 
 #Обработчик, выполняющиеся при команде start
 @router.message(Command('start'))
-async def on_start(message: Message):
-  #Регистрируем пользователя в нашей базе данных
-  await db.create_user(message.from_user.username if message.from_user.username else message.from_user.first_name, message.from_user.id)
-  await message.reply('Привет! Здесь ты можешь на основе твоих предпочтений в музыке, книгах, фильмах получить рекомендацию от нейросети или уникальный увет своего вкуса!', reply_markup=kb.reply)
-  
-#Обработчик, выполняющиеся при сообщении с целью получения прошлых рекомендаций
-@router.message((F.text == 'Мои прошлые рекомендации') | (F.text == '/get_my_recommendations'))
-async def get_user_old_recommendations(message: Message, state: FSMContext):
-  await state.clear() #Очищаем состояние приложения
-  
-  #Достаём из базы данных все рекомендации, полученные пользователей
-  arr_with_user_recommendations = await db.get_user_recommendations(message.from_user.id)
-  
-  #Если есть ответ - пробегаемся по каждому запросу и полученной рекомендации, выводим их
-  if arr_with_user_recommendations:
-    arr_with_user_recommendations = list(map(lambda rec: f'<b>Твой запрос:</b>\n{rec[3]}\n\n<b>Ответ нейросети:</b>\n{rec[2]}', arr_with_user_recommendations))
-    for user_recommendation in arr_with_user_recommendations:
-      await message.reply(user_recommendation, parse_mode='html')
-  else:
-    await message.answer('Вы ещё не получали рекомендаций в нашем сервисе')
-    
-#Обработчик, выполняющиеся при сообщении с целью получения прошлых цветов вкуса пользователя
-@router.message((F.text == 'Цвета моего вкуса') | (F.text == '/get_my_colors'))
-async def get_user_colors(message: Message, state: FSMContext):
-  await state.clear() #Очищаем состояние приложения
-  
-  #Достаём из базы данных все цвета, полученные пользователей
-  arr_with_user_colors = await db.get_user_colors(message.from_user.id)
-  
-  #Если есть ответ - пробегаемся по каждому запросу и полученному цвету и отправляем их
-  if arr_with_user_colors:
-    arr_with_user_colors = list(map(lambda rec: f'<b>Твой запрос:</b>\n{rec[2]}\n\n<b>Цвет:</b>\nrgb({rec[3]})', arr_with_user_colors))
-    for user_color in arr_with_user_colors:
-      await message.reply(user_color, parse_mode='html')
-  else:
-    await message.answer('Вы ещё не получали рекомендаций в нашем сервисе')
-    
-@router.message((F.text == 'Самые популярные произведения') | (F.text == '/get_popular'))
-async def get_top_works(message: Message, state: FSMContext):
-  await state.clear() #Очищаем состояние приложения
-  
-  #Достаём из базы данных все рекомендации
-  recommendations = await db.get_all_recommendations()
-  songs = []
-  books = []
-  films = []
-  
-  #В зависимости от рекомендации добавляем её в 'песни', 'фильмы' или 'музыку'
-  for recommendation in recommendations:
-    if recommendation[4] == 'Музыка' and recommendation[5] == 'Песня':
-      songs.append(recommendation[3])
-    if recommendation[4] == 'Фильмы' and recommendation[5] == 'Фильм':
-      films.append(recommendation[3])
-    if recommendation[4] == 'Книги' and recommendation[5] == 'Книга':
-      books.append(recommendation[3])
-      
-  #Сортируем песни, фильмы, музыку по популярности
-  songs_str = '\n'.join(sort_arr_to_most_popular(songs))
-  books_str = '\n'.join(sort_arr_to_most_popular(books))
-  films_str = '\n'.join(sort_arr_to_most_popular(films))
-      
-  #Если есть рекомендации, отправляем их
-  if recommendations:
-    #Выделяем некоторые слова html тегами, чтобы они стали 'жирными'
-    #Не забываем вписать parse_mode = html, чтобы текст парсился по стандратнам html
-    await message.reply(f'<b>Песни:</b>\n{songs_str.title() if len(songs_str) >= 1 else "Пока нет"}', parse_mode='html')
-    await message.reply(f'<b>Книги:</b>\n{books_str.title() if len(books_str) >= 1 else "Пока нет"}', parse_mode='html')
-    await message.reply(f'<b>Фильмы:</b>\n{films_str.title() if len(films_str) >= 1 else "Пока нет"}', parse_mode='html')
-  else:
-    await message.answer('Самых популярных произведений ещё нет')
-
-#Обработчик, выполняющиеся при сообщении с целью получения рекомендации
-@router.message((F.text == 'Получить рекомендацию') | (F.text == '/get_recommendation'))
-async def get_recommendation(message: Message, state: FSMContext):
-  #Очищаем старое состояние (если оно есть)
-  await state.clear()
-  #Состояние приложения - выбор пользователем искусства (музыка, книги, фильмы)
-  await state.set_state(Req.art)
-  #Прикрепляем inlnine клавиатуру, сделанную с помощью функции с билдером
-  await message.reply('По чему ты хочешь получить рекомендацию?', reply_markup=await kb.create_inline_keyboard(os.getenv('inline_with_all_arts').split(',')))
-    
-#Обработчик, выполняющиеся при сообщении с целью получения цвета
-@router.message((F.text == 'Узнать цвет своего вкуса') | (F.text == '/get_unique_color'))
-async def want_to_get_color(message: Message, state: FSMContext):
-  #Очищаем старое состояние (если оно есть)
-  await state.clear()
-  #Состояние приложения: 'пользователь печает сообщение, благодаря которому получит свой цвет вкуса' (он печатает свои любмыие произведения)
-  await state.set_state(Color.message_to_get_color)
-  await message.answer('Напиши свои любые фильмы/музыку/книги через запятую')
-  
-#Обработчик, выполняющиеся при состоянии приложения: 'пользователь печает сообщение, благодаря которому получит свой цвет вкуса, это нужно, чтобы получить сообщение с любимыми произведениями пользователя' 
-@router.message(Color.message_to_get_color)
-async def get_arts_to_get_color(message: Message, state: FSMContext):
-  #Отправляем сообщение с информацией об ожидании ответа от нейросети
-  loading_msg = await message.answer('Нейросеть отвечает на ваше сообщение...')
+async def on_start(message: Message, state: FSMContext):
   try:
-    #Состояние приложения: 'ожидание овтета нейросети'
-    await state.set_state(Color.message_with_color_response)
-    #Проверяем существуют ли такие произведения
-    res_with_bool_answer = await generate(f'Ответь одним словом "да", если все следующие произведения существуют: {message.text}, иначе ответь одним словом "нет"')
-    if res_with_bool_answer.lower().find('нет') != -1:
-      await loading_msg.delete()
-      await message.answer(f'Введены некорректные данные или бот не знает, что это')
-      return 
-    #Запрос в нейросеть с чёткими инструкциями
-    res_with_color_text = await generate(f'Верни уникальный цвет вкуса пользователя в формате rgb (верни только 3 числа через запятую, больше ничего не отправляй!), учитывая его любимые фильмы, книги или музыку, которые даны в следующей строке через запятую: {message.text}. Учти, что книги или фильмы с жанром "Драма", "Мелодрама", грустная музыка делают цвет голубоватым (но не полностью голубым), а книги или фильмы с жанром "Боевик", "Триллер", "Ужасы", тяжелая музыка (металл, тяжёлый рок) делают цвет почти полностью ярко выраженным красным, а оптимистичные или весёлые книги, фильмы, музыка (семейные фильмы, комедии) делают цвет почти полностью желтым. Чем больше произведений, сопутсвующих данным условиям, чем ярче будет соответсвующий цвет. Делай цвета немного необычными, но не в коем случае не отклоняйся о  условий данных выше. ОТПРАВЬ ТОЛЬКО 3 ЧИСЛА ЧЕРЕЗ ЗАПЯТУЮ, БОЛЬШЕ НИЧЕГО НЕ ПИШИ')
-    #Делаем массив с тремя числами (rgb)
-    tuple_color = tuple(list(map(lambda x: int(x), res_with_color_text.split(',')))) 
-    #С помощью класса Image (библиотека Pillow) генерируем изображение, где цвет каждого пикселя будет передан в формате RGB, а его ширина и длинна - 500 на 500 пикселей (3 параметр - сам цвет формате rgb )
-    img = Image.new('RGB', (500, 500), tuple_color)
-    #С помощью библиотеки io получаем изображение в байтах 
-    buffered = io.BytesIO()
-    img.save(buffered, format="JPEG")
-    buffered.seek(0) 
-    buffer_img = BufferedInputFile(buffered.getvalue(), 'color.jpeg')
-    await loading_msg.delete()
-    #Отсылаем сообщение
-    await message.answer_photo(photo=buffer_img, caption=f'Вот твой уникальный цвет в формате rgb: ({res_with_color_text})')
-    
-    #Записываем запрос и ответ нейросети с цветом в базу данных
-    await db.create_user_color(message.from_user.id, message.text, res_with_color_text)
-    
-    await state.clear()
-  #При возникновении любой ошибки, отправляем сообщение пользователю
+    #Регистрируем пользователя в нашей базе данных
+    is_registered = await db.check_user_is_full_registered(message.from_user.id)
+    if is_registered:
+      await message.answer('Ты уже зарегистрирован в системе :)')
+      return
+    await db.create_user(message.from_user.username if message.from_user.username else message.from_user.first_name, message.from_user.id)
+    await message.answer('Привет! Здесь ты сможешь получить рекомендации по фильмам, музыке, книгам, и по желанию найти людей со схожим вкусом. Для начала работы тебе нужно будет написать свои любимые фильмы, песни, книги. Так я буду лучше знать, что тебе рекомендовать. Как будешь готов для этого, напиши что-то в чат :)')
+    await state.set_state(Req.ready_to_start)
+    await state.update_data(picks_favourite_films=[])
+    await state.update_data(picks_favourite_songs=[])
+    await state.update_data(picks_favourite_books=[])
   except:
-      await loading_msg.delete()
-      await message.answer('На сервере возникла ошибка, повторите ваш запрос позже')
+    await message.answer('Ой! Произошла какая-то ошибка. Попробуй написать позже')
   
-
-#Обработчик, который будет выполняться при состоянии приложения: 'сообщение для получения рекомендации' (то есть состояние, когда пользователь вводит текст для получения рекомендации)
-@router.message(Req.message_to_recommend)
-async def on_text_to_search_message(message: Message, state: FSMContext):
-  #Отправляем сообщение с информацией об ожидании ответа от нейросети
-  loading_msg = await message.answer('Нейросеть отвечает на ваше сообщение...')
-  try:
-      #Обновляем переменную message_to_recommend в State
-      await state.update_data(message_to_recommend=message.text)
-      #Получаем все переменные в состоянии, они назодятся в словаре data
-      data = await state.get_data()
-      art = data['art']
-      filter_to_search = data['filter_to_search']
-      res_with_bool_answer = ''
-      #Проверяем: правильно ли пользователь ввёл данные, если он ищет рекомендацию по произведению
-      if it_is_work_name(filter_to_search) and len(message.text.split(':')) < 2:
-        await loading_msg.delete()
-        await message.answer(f'Данные были введены некорректно')
-        return 
-      #Проверяем есть ли такой жанр/произведение/исполнитель
-      res_with_bool_answer = await generate(f'Ответь одним словом "да", если {filter_to_search} {message.text} существует в области {art}, иначе ответь одним словом "нет"')
-      
-      #Если ответ включает слово "нет" - отправляем пользователю 
-      #нформацию о неправильных данных, введённых им
-      if res_with_bool_answer.lower().find('нет') != -1:
-        await loading_msg.delete()
-        await message.answer(f'Введены некорректные данные или бот не знает, что это')
-        return 
-      #В другом случае меняем состояние приложение на 'ожидание овтета' (от нейросети)
-      await state.set_state(Res.message_with_response)
-      
-      #В зависимости от выбора пользователя в inline клавиатуре, генерируем разные рекомендации, используя нейросеть
-      res_with_recommendation_text = ''
-      if it_is_author(filter_to_search):
-        res_with_recommendation_text = await generate(f'Посоветуй похожего {"музыкального исполнителя" if filter_to_search == "Исполнитель" else filter_to_search}, если мне нравится {message.text}. Не начинай сообщение-ответ с утвердильных слов, по типу "Конечно", "Хорошо" и тд')
-      else:
-        res_with_recommendation_text = await generate(f'Посоветуй очень похожие произведения {get_choice_in_art(art)} (не авторов, ни жанры, а только произведения) исходя из {filter_to_search}, который называется {message.text}. Не начинай сообщение-ответ с утвердильных слов, по типу "Конечно", "Хорошо" и тд')
-      
-      
-      if not res_with_recommendation_text:
-          await message.answer('Нейросеть не смогла дать ответ, повтори запрос позже')
-      else:
-          await loading_msg.delete()
-          #Отправляем сообщение с рекомендацией
-          await message.answer(res_with_recommendation_text)
-
-          #Записываем запрос и ответ нейросети с рекомендацией в базу данных
-          if it_is_work_name(filter_to_search):
-            await db.create_user_recommendation(message.from_user.id, (message.text[message.text.find(':')+1:]).strip(), res_with_recommendation_text, art, data['filter_to_search'])
-          else:
-            await db.create_user_recommendation(message.from_user.id, message.text, res_with_recommendation_text, art, data['filter_to_search'])
-          await state.update_data(message_with_ressponse=res_with_recommendation_text)
-      await state.clear()
-  except:
-      await loading_msg.delete()
-      await message.answer('На сервере возникла ошибка, повторите ваш запрос позже')
   
-
-#callback_query
-
-#Обработчик, который проверяет - есть ли в очереди коллбэков элемент (callback) с data = 'Музыка'
-@router.callback_query(F.data == 'Музыка', Req.art)
-async def picks_music(callback: CallbackQuery, state: FSMContext):
-    await state.update_data(art=callback.data)
-    await state.set_state(Req.filter_to_search)
-    await callback.answer('')
-    await callback.message.edit_text('Выбери на основе чего ты хочешь найти рекомендацию', reply_markup=await kb.create_inline_keyboard([*os.getenv('inline_with_music_fields').split(','), '⬅️Назад']))
-
-@router.callback_query(F.data == 'Книги', Req.art)
-async def picks_books(callback: CallbackQuery, state: FSMContext):
-    await state.update_data(art=callback.data)
-    await state.set_state(Req.filter_to_search)
-    await callback.answer('')
-    #Изменяем текст сообщения, к которому прикреплён коллбэк
-    await callback.message.edit_text('Выбери на основе чего ты хочешь найти рекомендацию', reply_markup=await kb.create_inline_keyboard([*os.getenv('inline_with_book_fields').split(','), '⬅️Назад']))
-
-@router.callback_query(F.data == 'Фильмы', Req.art)
-async def picks_films(callback: CallbackQuery, state: FSMContext):
-    await state.update_data(art=callback.data)
-    await state.set_state(Req.filter_to_search)
-    await callback.answer('')
-    await callback.message.edit_text('Выбери на основе чего ты хочешь найти рекомендацию', reply_markup=await kb.create_inline_keyboard([*os.getenv('inline_with_film_fields').split(','), '⬅️Назад']))
-    
-@router.callback_query(F.data == '⬅️Назад', Req.filter_to_search)
-async def picks_films(callback: CallbackQuery, state: FSMContext):
-    await state.set_state(Req.art)
-    await callback.answer('')
-    await callback.message.edit_text('По чему ты хочешь получить рекомендацию?', reply_markup=await kb.create_inline_keyboard(os.getenv('inline_with_all_arts').split(',')))
-    
+@router.message(Req.ready_to_start)
+async def on_ready_to_start(message: Message, state: FSMContext):
+  text = 'Отлично, приступим! Напиши свои любимые фильмы. Каждое название фильма должно идти отдельным сообщением. Когда закончишь, напиши "Я закончил".\nСнизу приведён пример ввода'
+  await message.answer(f'{text}<a href="https://i.ibb.co/KchfJ5hc/image-2025-11-30-13-48-18.png">:</a>',
+    parse_mode="HTML")
+  
+  await state.set_state(Req.picks_favourite_films)
 
 
-@router.callback_query(Req.filter_to_search)
-async def message_to_recommend(callback: CallbackQuery, state: FSMContext):
-    await callback.answer('')
-    await state.update_data(filter_to_search=callback.data)
-    await state.set_state(Req.message_to_recommend)
-    
-    #Используем вспомогательные функции
-    old_choice_in_filter = callback.data
-    choice_in_filter = word_in_filter_choice[old_choice_in_filter]
-    its_author = it_is_author(old_choice_in_filter)
-    
-    if it_is_work_name(old_choice_in_filter):
-      await callback.message.edit_text(f'Введи {choice_in_filter} и имя автора, чтобы найти произведения, подходящие тебе по мнению нейросети. Пример ввода: "Автор: {choice_in_filter}"')
+#Picks favourite films
+@router.message(Req.picks_favourite_films)
+async def picks_favourite_films_handler(message: Message, state: FSMContext):
+  if message.text.lower() == "я закончил" or message.text.lower() == "я закончил.":
+    films = (await state.get_data())["picks_favourite_films"]
+    if len(films) != 0:
+      await on_stop_picking_favourite_films(message=message, state=state)
     else:
-      await callback.message.edit_text(f'Введи {choice_in_filter}, чтобы найти {choice_in_author[old_choice_in_filter] if its_author else "произведения"}, подходящ{"их" if its_author else "ие"} тебе по мнению нейросети')
+      await message.answer("Ты должен ввести хотя бы один фильм!")
+  else:
+    await on_picks_favourite_films(message=message, state=state)
+  
+async def on_picks_favourite_films(message: Message, state: FSMContext):
+  try:
+    loading_msg = await message.answer('Одну минуту...')
+    if len(message.text) > 350:
+        await loading_msg.delete()
+        await message.answer('Прости, но это слишком длинное сообщение')
+        return
     
+    s = message.text
+    try:
+        answer = await get_movie_original_name(s.strip())
+        s = answer
+        if (answer == None):
+          raise Exception
+    except:
+        await loading_msg.delete()
+        await message.answer('Похоже, что такого фильма не существует. Попробуй снова')
+        return 
+
+    prevFilms = (await state.get_data())["picks_favourite_films"]
+    prevFilms.append(s.strip())
+    await state.update_data(picks_favourite_films=prevFilms)
+    await loading_msg.delete()
+    await message.answer('Отлично! Можешь продолжать')
+  except: 
+    await loading_msg.delete()
+    await message.answer('Ой! Произошла какая-то ошибка. Попробуй написать ещё раз')
+  
+async def on_stop_picking_favourite_films(message: Message, state: FSMContext):
+  try:
+    text = 'Хорошо! Теперь напиши свои любимые песни. Каждое название песни должно идти отдельным сообщением и вместе с её автором. Когда закончишь, напиши "Я закончил".\nСнизу приведён пример ввода'
+    await message.answer(f'{text}<a href="https://i.ibb.co/j9GTY3sg/image-2025-11-30-13-46-07.png">:</a>',
+    parse_mode="HTML")
+    
+    await state.set_state(Req.picks_favourite_songs)
+  except:
+    await message.answer('Ой! Произошла какая-то ошибка. Попробуй написать позже')
+    
+
+#Picks favourite songs   
+@router.message(Req.picks_favourite_songs)
+async def picks_favourite_songs_handler(message: Message, state: FSMContext):
+  if message.text.lower() == "я закончил" or message.text.lower() == "я закончил.":
+    songs = (await state.get_data())["picks_favourite_songs"]
+    if len(songs) != 0:
+      await on_stop_picking_favourite_songs(message=message, state=state)
+    else:
+      await message.answer("Ты должен ввести хотя бы одну песню!")
+  else:
+    await on_picks_favourite_songs(message=message, state=state)
+  
+async def on_picks_favourite_songs(message: Message, state: FSMContext):
+  try:
+    loading_msg = await message.answer('Одну минуту...')
+    if len(message.text) > 350:
+        await loading_msg.delete()
+        await message.answer('Прости, но это слишком длинное сообщение')
+        return
+    
+    s = message.text
+    try:
+      author, song_name = [x.strip() for x in s.split("-")]
+      author, song_name = await get_song_title_and_author(song_name, author)
+      s = [author, song_name]
+      if song_name == None or author == None:
+        raise Exception
+    except:
+      await loading_msg.delete()
+      await message.answer('Похоже, что такой песни не существует. Попробуй снова')
+      return 
+    
+    prevSongs = (await state.get_data())["picks_favourite_songs"]
+    prevSongs.append(s)
+    await state.update_data(picks_favourite_songs=prevSongs)
+    await loading_msg.delete()
+    await message.answer('Отлично! Можешь продолжать')
+  except: 
+    await loading_msg.delete()
+    await message.answer('Ой! Произошла какая-то ошибка. Попробуй написать ещё раз')
+    
+async def on_stop_picking_favourite_songs(message: Message, state: FSMContext):
+  try:
+    text = 'Хорошо! Теперь напиши свои любимые книги. Каждое название книги должно идти отдельным сообщением. Когда закончишь, напиши "Я закончил".\nСнизу приведён пример ввода'
+    await message.answer(f'{text}<a href="https://i.ibb.co/3yqJf4Rn/image-2025-11-30-13-47-15.png">:</a>',
+    parse_mode="HTML")
+    
+    await state.set_state(Req.picks_favourite_books)
+  except:
+    await message.answer('Ой! Произошла какая-то ошибка. Попробуй написать позже')
+    
+#Picks favourite books
+@router.message(Req.picks_favourite_books)
+async def picks_favourite_books_handler(message: Message, state: FSMContext):
+  if message.text.lower() == "я закончил" or message.text.lower() == "я закончил.":
+    books = (await state.get_data())["picks_favourite_books"]
+    if len(books) != 0:
+      await on_stop_picking_favourite_books(message=message, state=state)
+    else:
+      await message.answer("Ты должен ввести хотя бы одну книгу!")
+  else:
+    await on_picks_favourite_books(message=message, state=state)
+  
+async def on_picks_favourite_books(message: Message, state: FSMContext):
+  try:
+    loading_msg = await message.answer('Одну минуту...')
+    if len(message.text) > 350:
+        await loading_msg.delete()
+        await message.answer('Прости, но это слишком длинное сообщение')
+        return
+    
+    s = message.text
+    try:
+        answer = await get_book(s.strip())
+        if (answer == None):
+          raise Exception
+        else:
+          s = answer.get("title")
+    except:
+        await loading_msg.delete()
+        await message.answer('Похоже, что такой книги не существует. Попробуй снова')
+        return 
+
+    prevbooks = (await state.get_data())["picks_favourite_books"]
+    prevbooks.append(s.strip())
+    await state.update_data(picks_favourite_books=prevbooks)
+    await loading_msg.delete()
+    await message.answer('Отлично! Можешь продолжать')
+  except: 
+    await loading_msg.delete()
+    await message.answer('Ой! Произошла какая-то ошибка. Попробуй написать ещё раз')
+  
+async def on_stop_picking_favourite_books(message: Message, state: FSMContext):
+  loading_msg = await message.answer('Одну минуту...')
+  try:
+    #EndRegister
+    await write_favourite_in_db(message=message, state=state)
+    await register_user(message.from_user.id)
+    
+    await loading_msg.delete()
+    await message.answer('Замечательно! Теперь ты можешь приступить к использованию функций бота!', reply_markup=kb.reply_kb)
+    await state.clear()
+  except:
+    await loading_msg.delete()
+    await message.answer('Ой! Произошла какая-то ошибка. Попробуй написать позже')
+    
+#Register
+async def register_user(user_id):
+  await db.register_user(user_id)
+  
+#Write_favourite_in_db
+async def write_favourite_in_db(message: Message, state: FSMContext):
+  #Films
+  films = (await state.get_data())["picks_favourite_films"] 
+  for film_name in films:
+    await db.create_user_favourite_film(message.from_user.id, film_name)
+  #Songs
+  songs = (await state.get_data())["picks_favourite_songs"]
+  for song in songs:
+    await db.create_user_favourite_song(message.from_user.id, author=song[0], song_name=song[1])
+  #Books
+  books = (await state.get_data())["picks_favourite_books"] 
+  for book_name in books:
+      await db.create_user_favourite_book(message.from_user.id, book_name)
+  
+    
+# 'id INTEGER PRIMARY KEY AUTOINCREMENT, ' [0]
+#               'username VARCHAR(64) NOT NULL, ' [1]
+#               'tg_id INTEGER NOT NULL, ' [2]
+#               'registered INTEGER NOT NULL' [3]
+
+# ('CREATE TABLE IF NOT EXISTS users_favourite_works(' [0]
+#               'id INTEGER PRIMARY KEY AUTOINCREMENT, ' [1]
+#               'user_id INTEGER, ' [2]
+#               'art VARCHAR(64) NOT NULL, ' [3]
+#               'work_name VARCHAR(128) NOT NULL, ' [4]
+#               'FOREIGN KEY (user_id) REFERENCES users(id)' [5]
+#               ')')
+@router.message((F.text == 'Что посмотреть?') | (F.text == '/get_film_recommendation'))
+async def get_film_recommendation(message: Message, state: FSMContext):
+  loading_msg = await message.answer("Одну минуту...")
+  rec_intro = False
+  try: 
+    is_full_registered = await db.check_user_is_full_registered(message.from_user.id)
+    if not(is_full_registered): #Если не зарегистрирован
+      await loading_msg.delete()
+      await message.answer('Ты должен сначала ввести все свои любимые фильмы, песни и книги!')
+      return 
+    liked_films = list(await db.get_all_user_film_likes(message.from_user.id))
+    disliked_films = list(await db.get_all_user_film_dislikes(message.from_user.id))
+    favourite_films = list(await db.get_all_favourite_films(message.from_user.id))
+    recommended_films = list(await db.get_all_recommended_films(message.from_user.id))
+    
+    mes = hp.get_film_recommend_ai_prompt(favourite_films=favourite_films, recommended_films=recommended_films, liked_films=liked_films,disliked_films=disliked_films)
+
+    answer = await generate(mes)
+    
+    answer = json.loads(answer)
+    reccomendation_intro = answer[0]
+    films_name = answer[1]
+    
+    films_rus_with_year = []  
+    for film_name in films_name:
+      answer = await get_movie_in_rus(film_name) 
+      if answer[0] == "" or answer[1] == "" or answer[2] == "":
+        raise Exception
+      films_rus_with_year.append(answer)
+    
+    for film_name in films_name:
+      if film_name in favourite_films or film_name in recommended_films:
+        raise Exception
+      await db.create_user_recommended_film(message.from_user.id, film_name)  
+
+    await loading_msg.delete()
+    rec_intro = await message.answer(reccomendation_intro)
+    
+    for film_id in range(len(films_name)):
+      film_id_in_db = await db.get_recommended_film_id(film_name=films_name[film_id])
+      await message.answer(text=f'''
+        <b>{films_rus_with_year[film_id][0]} ({films_rus_with_year[film_id][1]})</b>\n\n{films_rus_with_year[film_id][2]}''', 
+      reply_markup=kb.get_inline_like_dislike_film_kb(int(film_id_in_db)), parse_mode="HTML")
+  except: 
+    if (rec_intro): await rec_intro.delete()
+    if (loading_msg): await loading_msg.delete()
+    await message.answer('Ой! Произошла какая-то ошибка. Попробуй написать позже')
+
+@router.message((F.text == 'Что послушать?') | (F.text == '/get_song_recommendation'))
+async def get_film_recommendation(message: Message, state: FSMContext):
+  loading_msg = await message.answer("Одну минуту...")
+  rec_intro = False
+  try:
+    is_full_registered = await db.check_user_is_full_registered(message.from_user.id)
+    if not(is_full_registered): #Если не зарегистрирован
+      await loading_msg.delete()
+      await message.answer('Ты должен сначала ввести все свои любимые фильмы, песни и книги!')
+      return 
+    
+    liked_songs = list(await db.get_all_user_song_likes(message.from_user.id))
+    disliked_songs = list(await db.get_all_user_song_dislikes(message.from_user.id))
+    favourite_songs = list(await db.get_all_favourite_songs(message.from_user.id))
+    recommended_songs = list(await db.get_all_recommended_songs(message.from_user.id))
+    
+    mes = hp.get_song_recommend_ai_prompt(favourite_songs=favourite_songs, recommended_songs=recommended_songs, liked_songs=liked_songs,disliked_songs=disliked_songs)
+    answer = await generate(mes)
+
+    answer = json.loads(answer)
+    reccomendation_intro = answer[0]
+    songs = answer[1]
+    
+    for author, song_name in songs:
+      answer = await music_is_exist(song_name, author) 
+      if not(answer):
+        raise Exception
+      
+    for author, song_name in songs:
+      if song_name in hp.take_only_song_names(favourite_songs) or song_name in hp.take_only_song_names(recommended_songs):
+        raise Exception
+      await db.create_user_recommended_song(message.from_user.id, author=author, song_name=song_name)  
+    
+    await loading_msg.delete()
+    rec_intro = await message.answer(reccomendation_intro)
+    for author, song_name in songs:
+      song_id_in_db = await db.get_recommended_song_id(song_name=song_name,author=author)
+      await message.answer(text=f"{author} - {song_name}", 
+      reply_markup=kb.get_inline_like_dislike_song_kb(int(song_id_in_db)))
+  except: 
+    if (rec_intro): await rec_intro.delete()
+    if (loading_msg): await loading_msg.delete()
+    await message.answer('Ой! Произошла какая-то ошибка. Попробуй написать позже')
+    
+@router.message((F.text == 'Что почитать?') | (F.text == '/get_book_recommendation'))
+async def get_film_recommendation(message: Message, state: FSMContext):
+  loading_msg = await message.answer("Одну минуту...")
+  rec_intro = False
+  try: 
+    is_full_registered = await db.check_user_is_full_registered(message.from_user.id)
+    if not(is_full_registered): #Если не зарегистрирован
+      await loading_msg.delete()
+      await message.answer('Ты должен сначала ввести все свои любимые фильмы, песни и книги!')
+      return 
+    
+    liked_books = list(await db.get_all_user_book_likes(message.from_user.id))
+    disliked_books = list(await db.get_all_user_book_dislikes(message.from_user.id))
+    favourite_books = list(await db.get_all_favourite_books(message.from_user.id))
+    recommended_books = list(await db.get_all_recommended_books(message.from_user.id))
+    
+    mes = hp.get_book_recommend_ai_prompt(favourite_books=favourite_books, recommended_books=recommended_books, liked_books=liked_books,disliked_books=disliked_books)
+    
+    answer = await generate(mes)
+    
+    answer = json.loads(answer)
+    reccomendation_intro = answer[0]
+    books_name = answer[1]
+    
+    # books = []  
+    # for book_name in books_name:
+    #   book = await get_book(book_name) 
+    #   if book == None:
+    #     raise Exception
+    #   books.append([book.get("title"), book.get("description")])
+    
+    for book_name in books_name:
+      if book_name in favourite_books or book_name in recommended_books:
+        raise Exception
+      await db.create_user_recommended_book(message.from_user.id, book_name)  
+
+    await loading_msg.delete()
+    rec_intro = await message.answer(reccomendation_intro)
+    
+    for book_name in books_name:
+      book_id_in_db = await db.get_recommended_book_id(book_name=book_name)
+      await message.answer(text=f'''
+        <b>{book_name}</b>''', 
+      parse_mode="HTML",
+      reply_markup=kb.get_inline_like_dislike_book_kb(int(book_id_in_db)))
+  except: 
+    if (rec_intro): await rec_intro.delete()
+    if (loading_msg): await loading_msg.delete()
+    await message.answer('Ой! Произошла какая-то ошибка. Попробуй написать позже')
+    
+# #Обработчик, выполняющиеся при сообщении с целью получения прошлых рекомендаций
+# @router.message((F.text == 'Мои прошлые рекомендации') | (F.text == '/get_my_recommendations'))
+# async def get_user_old_recommendations(message: Message, state: FSMContext):
+#   await state.clear() #Очищаем состояние приложения
+  
+#   #Достаём из базы данных все рекомендации, полученные пользователей
+#   arr_with_user_recommendations = await db.get_user_recommendations(message.from_user.id)
+  
+#   #Если есть ответ - пробегаемся по каждому запросу и полученной рекомендации, выводим их
+#   if arr_with_user_recommendations:
+#     arr_with_user_recommendations = list(map(lambda rec: f'<b>Твой запрос:</b>\n{rec[3]}\n\n<b>Ответ нейросети:</b>\n{rec[2]}', arr_with_user_recommendations))
+#     for user_recommendation in arr_with_user_recommendations:
+#       await message.reply(user_recommendation, parse_mode='html')
+#   else:
+#     await message.answer('Вы ещё не получали рекомендаций в нашем сервисе')
+    
+# #Обработчик, выполняющиеся при сообщении с целью получения прошлых цветов вкуса пользователя
+# @router.message((F.text == 'Полученные мной темпераменты') | (F.text == '/get_received_temperaments'))
+# async def get_user_colors(message: Message, state: FSMContext):
+#   await state.clear() #Очищаем состояние приложения
+  
+#   #Достаём из базы данных все цвета, полученные пользователей
+#   arr_with_user_colors = await db.get_user_colors(message.from_user.id)
+  
+#   #Если есть ответ - пробегаемся по каждому запросу и полученному цвету и отправляем их
+#   if arr_with_user_colors:
+#     arr_with_user_colors = list(map(lambda rec: f'<b>Твой запрос:</b>\n{rec[2]}\n\n<b>Темперамент:</b>\n{rec[3]}', arr_with_user_colors))
+#     for user_color in arr_with_user_colors:
+#       await message.reply(user_color, parse_mode='html')
+#   else:
+#     await message.answer('Вы ещё не получали темперамент в нашем сервисе')
+    
+# @router.message((F.text == 'Самые популярные произведения') | (F.text == '/get_popular'))
+# async def get_top_works(message: Message, state: FSMContext):
+#   await state.clear() #Очищаем состояние приложения
+  
+#   #Достаём из базы данных все рекомендации
+#   recommendations = await db.get_all_recommendations()
+#   songs = []
+#   books = []
+#   films = []
+  
+#   #В зависимости от рекомендации добавляем её в 'песни', 'фильмы' или 'музыку'
+#   for recommendation in recommendations:
+#     if recommendation[4] == 'Музыка' and recommendation[5] == 'Песня':
+#       songs.append(recommendation[3])
+#     if recommendation[4] == 'Фильмы' and recommendation[5] == 'Фильм':
+#       films.append(recommendation[3])
+#     if recommendation[4] == 'Книги' and recommendation[5] == 'Книга':
+#       books.append(recommendation[3])
+      
+#   #Сортируем песни, фильмы, музыку по популярности
+#   songs_str = '\n'.join(sort_arr_to_most_popular(songs))
+#   books_str = '\n'.join(sort_arr_to_most_popular(books))
+#   films_str = '\n'.join(sort_arr_to_most_popular(films))
+      
+#   #Если есть рекомендации, отправляем их
+#   if recommendations:
+#     #Выделяем некоторые слова html тегами, чтобы они стали 'жирными'
+#     #Не забываем вписать parse_mode = html, чтобы текст парсился по стандратнам html
+#     await message.reply(f'<b>Песни:</b>\n{songs_str.title() if len(songs_str) >= 1 else "Пока нет"}', parse_mode='html')
+#     await message.reply(f'<b>Книги:</b>\n{books_str.title() if len(books_str) >= 1 else "Пока нет"}', parse_mode='html')
+#     await message.reply(f'<b>Фильмы:</b>\n{films_str.title() if len(films_str) >= 1 else "Пока нет"}', parse_mode='html')
+#   else:
+#     await message.answer('Самых популярных произведений ещё нет')
+
+
+# #callback_query
+
+@router.callback_query(kb.EstimationCallbackDataFilm.filter())
+async def handle_film_action(
+    query: CallbackQuery, 
+    callback_data: kb.EstimationCallbackDataFilm
+):
+  await query.message.edit_reply_markup()
+  film_name = await db.get_recommended_film_name_from_film_id(callback_data.film_id)
+  if callback_data.type == "Like":
+    await db.create_user_film_like(query.from_user.id, film_name)
+  else:
+    await db.create_user_film_dislike(query.from_user.id, film_name)
+    
+@router.callback_query(kb.EstimationCallbackDataSong.filter())
+async def handle_song_action(
+    query: CallbackQuery, 
+    callback_data: kb.EstimationCallbackDataSong
+):
+  await query.message.edit_reply_markup()
+  author, song_name = await db.get_recommended_song_author_and_name_from_song_id(callback_data.song_id)
+  if callback_data.type == "Like":
+    await db.create_user_song_like(query.from_user.id, author, song_name)
+  else:
+    await db.create_user_song_dislike(query.from_user.id, author, song_name)
+    
+@router.callback_query(kb.EstimationCallbackDataBook.filter())
+async def handle_book_action(
+    query: CallbackQuery, 
+    callback_data: kb.EstimationCallbackDataBook
+):
+  await query.message.edit_reply_markup()
+  book_name = await db.get_recommended_book_name_from_book_id(callback_data.book_id)
+  if callback_data.type == "Like":
+    await db.create_user_book_like(query.from_user.id, book_name)
+  else:
+    await db.create_user_book_dislike(query.from_user.id, book_name)
     

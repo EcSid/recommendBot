@@ -7,8 +7,8 @@ from dotenv import load_dotenv
 from app.database import db_start
 
 load_dotenv()
-bot = Bot(token=os.getenv('BOT_TOKEN'))
-dp = Dispatcher()
+bot = Bot(token=os.getenv('BOT_TOKEN', ''))
+dp = Dispatcher()   
 
 async def main():
     load_dotenv()
