@@ -1,39 +1,49 @@
 import aiohttp
 import os
 from urllib.parse import quote
+import re
 
 async def get_book(title):
-    """Асинхронно получает данные о книге по русскому названию"""
+    def normalize_string(text):
+        # Приводим к нижнему регистру, заменяем ё на е, оставляем только буквы, цифры и пробелы
+        text = text.lower().replace('ё', 'е')
+        text = re.sub(r'[^a-zа-я0-9\s]', '', text) 
+        text = re.sub(r'\s+', ' ', text).strip()
+        return text
     
-    # Кодируем запрос для URL
+    normalized_search_title = normalize_string(title)
+    
     query = quote(f"intitle:{title}")
-    url = f"https://www.googleapis.com/books/v1/volumes?q={query}&langRestrict=ru&maxResults=1&key={os.getenv('GOOGLE_BOKS_API_KEY')}"
+    url = f"https://www.googleapis.com/books/v1/volumes?q={query}&langRestrict=ru&maxResults=5&key={os.getenv('GOOGLE_BOOKS_API_KEY')}"
     
     try:
         async with aiohttp.ClientSession() as session:
             async with session.get(url) as response:
                 if response.status == 200:
                     data = await response.json()
-                    book_data = process_book_data(data)
-                    original_title = book_data.get("title")
-                    if (title.lower() in original_title.lower()):
-                        return book_data
+                    
+                    if data.get('items'):
+                        for item in data['items']:
+                            volume_info = item.get('volumeInfo', {})
+                            original_title = volume_info.get('title', '')
+                            
+                            normalized_original_title = normalize_string(original_title)
+                            
+                            if (normalized_search_title in normalized_original_title or 
+                                normalized_original_title in normalized_search_title):
+                                return process_book_data_item(item)
+            
+                        # print(f"Не совпали названия")
                     return None
                 else:
-                    print(f"Ошибка HTTP: {response.status}")
+                    # print(f"Ошибка HTTP: {response.status}")
                     return None
-                    
     except Exception as e:
-        print(f"Произошла ошибка: {e}")
+        # print(f"Произошла ошибка: {e}")
         return None
-      
-def process_book_data(data):
-    if not data.get('items'):
-        print("Книга не найдены")
-        return None
-      
-    item = data["items"][0]
-    
+
+def process_book_data_item(item):
+    """Обрабатывает данные одной книги из items"""
     volume_info = item.get('volumeInfo', {})
     book = {
         'title': volume_info.get('title', 'Нет названия'),
@@ -46,5 +56,4 @@ def process_book_data(data):
         'preview_link': volume_info.get('previewLink'),
         'info_link': volume_info.get('infoLink')
     }
-    
     return book

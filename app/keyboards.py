@@ -23,6 +23,10 @@ reply_kb = ReplyKeyboardMarkup(keyboard=[
     #(это же работает с inline клавиатурой)
     [KeyboardButton(text='Что посмотреть?'),KeyboardButton(text='Что послушать?')],
     [KeyboardButton(text='Что почитать?')],
+    [KeyboardButton(text='Изменить свои любимые фильмы')],
+    [KeyboardButton(text='Изменить свои любимые песни')],
+    [KeyboardButton(text='Изменить свои любимые книги')],
+    [KeyboardButton(text='Удалить профиль')],
 ], resize_keyboard=True, #Уменьшаем наши кнопки
    input_field_placeholder='Выберите пункт меню' #Изменяет значения placeholder
 )
@@ -56,10 +60,20 @@ def get_inline_like_dislike_book_kb(book_id: int):
     kb.add(InlineKeyboardButton(text="👍", callback_data=EstimationCallbackDataBook(type="Like", book_id=book_id).pack()))
     kb.add(InlineKeyboardButton(text="👎", callback_data=EstimationCallbackDataBook(type="Dislike", book_id=book_id).pack()))
     return kb.adjust(2).as_markup()
-    
 
+def create_inline_keyboard_for_delete_profile():
+    kb = InlineKeyboardBuilder()
+    kb.add(InlineKeyboardButton(text="Да", callback_data="Yes"))
+    kb.add(InlineKeyboardButton(text="Нет", callback_data="No"))
+    return kb.adjust(2).as_markup()
 
-#Специальная функция, которая на основе входных данных создаёт inline клавиатуру и возвращает её
+def create_inline_keyboard_for_change_favourites():
+    kb = InlineKeyboardBuilder()
+    kb.add(InlineKeyboardButton(text="Удалить", callback_data="Delete"))
+    kb.add(InlineKeyboardButton(text="Добавить", callback_data="Add"))
+    return kb.adjust(2).as_markup()
+
+# # Специальная функция, которая на основе входных данных создаёт inline клавиатуру и возвращает её
 # async def create_inline_keyboard(inline_buttons: list[str]):
 #     #Создаём объект keyboard класса InlineKeyboardBuilder
 #     keyboard = InlineKeyboardBuilder()
@@ -69,3 +83,17 @@ def get_inline_like_dislike_book_kb(book_id: int):
 #         keyboard.add(InlineKeyboardButton(text=s, callback_data=s))
 #     #В функцию adjust передаём значение, сколько в одном ряду будет кнопок, а as_markup() - обязательная преписка, которая возвращает итоговый объект клавиатуры
 #     return keyboard.adjust(1).as_markup()
+
+
+    
+
+# Специальная функция, которая на основе входных данных создаёт inline клавиатуру и возвращает её
+def create_inline_keyboard_for_genres(inline_buttons: list[str], genre: str):
+    #Создаём объект keyboard класса InlineKeyboardBuilder
+    keyboard = InlineKeyboardBuilder()
+    for s in inline_buttons:
+        #Добавляем каждое значения списка в нашу клавиатуру
+        #При нажатии на кнопку в очередь коллбэков будет отправляться коллбэк с data равной callback_data
+        keyboard.add(InlineKeyboardButton(text=s, callback_data=f"{genre}~#~{s}"))
+    #В функцию adjust передаём значение, сколько в одном ряду будет кнопок, а as_markup() - обязательная преписка, которая возвращает итоговый объект клавиатуры
+    return keyboard.adjust(1).as_markup()

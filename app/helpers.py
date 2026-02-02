@@ -60,7 +60,7 @@ def convert_song_list(song_list):
     final_str += f"{author_name} - {song_name}; "
   return final_str.strip()
 
-def get_film_recommend_ai_prompt(favourite_films, recommended_films, liked_films, disliked_films):
+def get_film_recommend_ai_prompt(favourite_films, recommended_films, liked_films, disliked_films, genre):
   return f"""
 СИСТЕМА: Ты - кинокритик, который подбирает персонализированные рекомендации фильмов.
 
@@ -70,6 +70,7 @@ def get_film_recommend_ai_prompt(favourite_films, recommended_films, liked_films
 - Любимые фильмы: {", ".join(favourite_films)}
 - Понравившиеся фильмы: {", ".join(liked_films)}  
 - Непонравившиеся фильмы: {", ".join(disliked_films)}
+- {"" if genre == "Это неважно" else "Жанр: " + genre}
 
 АБСОЛЮТНЫЕ ОГРАНИЧЕНИЯ - НЕ РЕКОМЕНДОВАТЬ:
 1. Ни один из этих фильмов: {", ".join(favourite_films)}, {", ".join(recommended_films)}
@@ -86,7 +87,8 @@ def get_film_recommend_ai_prompt(favourite_films, recommended_films, liked_films
 
 ПРОВЕРКА ПЕРЕД ОТВЕТОМ:
 ✅ Убедись, что названия рекомендованных фильмов НЕ совпадают с названиями фильмов из запрещенных списков
-✅ Убедись, что это полное название фильма
+{"" if genre == "Это неважно" else "✅Убедись, что фильм совпадает с жанром " + genre}
+✅ Убедись, что фильм попадает
 ✅ Проверь, что это не связанные фильмы (сиквелы и т.д.)
 ✅ Проверь, что это эти фильмы существуют. Используй только фильмы, в существовании которых ты уверен на 100%
 ✅ Рекомендации должны существовать и быть популярными
@@ -98,7 +100,7 @@ def get_film_recommend_ai_prompt(favourite_films, recommended_films, liked_films
 ]
 """
 
-def get_song_recommend_ai_prompt(favourite_songs, recommended_songs, liked_songs, disliked_songs):
+def get_song_recommend_ai_prompt(favourite_songs, recommended_songs, liked_songs, disliked_songs, genre):
   return f"""
   СИСТЕМА: Ты - критик музыки, который подбирает персонализированные рекомендации песен.
 
@@ -108,6 +110,7 @@ def get_song_recommend_ai_prompt(favourite_songs, recommended_songs, liked_songs
   - Любимые песни: {convert_song_list(favourite_songs)}
   - Понравившиеся песни: {convert_song_list(liked_songs)}  
   - Непонравившиеся песни: {convert_song_list(disliked_songs)}
+  - {"" if genre == "Это неважно" else "Жанр: " + genre}
 
   АБСОЛЮТНЫЕ ОГРАНИЧЕНИЯ - НЕ РЕКОМЕНДОВАТЬ:
   1. Ни одну из этих песен: {convert_song_list(favourite_songs)}, {convert_song_list(recommended_songs)}
@@ -125,6 +128,7 @@ def get_song_recommend_ai_prompt(favourite_songs, recommended_songs, liked_songs
   ✅ Убедись, что это полное название песни
   ✅ Убедись, что в названии песни правильно указаны все пробелы
   ✅ Убедись, что автор песни действительно существует
+  {"" if genre == "Это неважно" else "✅Убедись, что песня совпадает с жанром " + genre}
   ✅ Используй только песни, в существовании которых ты уверен на 100%
   ✅ Рекомендации должны существовать и быть популярными
 
@@ -135,7 +139,7 @@ def get_song_recommend_ai_prompt(favourite_songs, recommended_songs, liked_songs
   ]
   """
   
-def get_book_recommend_ai_prompt(favourite_books, recommended_books, liked_books, disliked_books):
+def get_book_recommend_ai_prompt(favourite_books, recommended_books, liked_books, disliked_books, genre):
   return f"""
 СИСТЕМА: Ты - критик книг, который подбирает персонализированные рекомендации книг.
 
@@ -145,6 +149,7 @@ def get_book_recommend_ai_prompt(favourite_books, recommended_books, liked_books
 - Любимые книги: {", ".join(favourite_books)}
 - Понравившиеся книги: {", ".join(liked_books)}  
 - Непонравившиеся книги: {", ".join(disliked_books)}
+- {"" if genre == "Это неважно" else "Жанр: " + genre}
 
 АБСОЛЮТНЫЕ ОГРАНИЧЕНИЯ - НЕ РЕКОМЕНДОВАТЬ:
 1. Ни одна из этих книг: {", ".join(favourite_books)}, {", ".join(recommended_books)}
@@ -164,6 +169,7 @@ def get_book_recommend_ai_prompt(favourite_books, recommended_books, liked_books
 ✅ Убедись, что правильно перевёл на русский язык название книги. Проверь это, используя открытые базы данных, как google books
 ✅ Повторно убедись, что правильно перевёл на русский язык название книги. Проверь это, используя открытые базы данных, как google books
 ✅ Убедись, что это полное название книги
+{"" if genre == "Это неважно" else "✅Убедись, что книга совпадает с жанром " + genre}
 ✅ Проверь, что это не связанные книги (сиквелы и т.д.)
 ✅ Проверь, что это эти книги существуют. Используй только книги, в существовании которых ты уверен на 100%
 ✅ Рекомендации должны существовать и быть популярными
@@ -177,3 +183,6 @@ def get_book_recommend_ai_prompt(favourite_books, recommended_books, liked_books
 
 def take_only_song_names(songs):
   return list(map(lambda x: x[1], songs))
+
+
+  

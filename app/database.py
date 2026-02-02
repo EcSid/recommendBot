@@ -7,7 +7,7 @@ cur = None
 async def db_start():
   global db, cur
   
-  db = await sq.connect('tg.db') #Подключение к файлу с базой данных (Если его не существует - будет автоматически создан файл с базой данных, и произойдёт подключение к нему)
+  db = await sq.connect('.././MiniApp/server/tg.db') #Подключение к файлу с базой данных (Если его не существует - будет автоматически создан файл с базой данных, и произойдёт подключение к нему)
   cur = await db.cursor() #Создаём объект курсор, с помоью него мы будем делать sql запросы
   #Таблица с пользователями
   await cur.execute('CREATE TABLE IF NOT EXISTS users('
@@ -138,16 +138,49 @@ async def get_user(tg_id):
 
 #CreateFavourite
 async def create_user_favourite_film(user_id, work_name):
-  await cur.execute('INSERT INTO users_favourite_films(user_id, work_name) VALUES (?, ?)', [user_id, work_name])
-  await db.commit() #Сохраняем изменения в таблицу
+  # Проверяем, не существует ли уже запись
+  await cur.execute(
+      'SELECT id FROM users_favourite_films WHERE user_id = ? AND work_name = ?',
+      [user_id, work_name]
+  )
+  result = await cur.fetchone()
+  if not result:
+      await cur.execute(
+          'INSERT INTO users_favourite_films(user_id, work_name) VALUES (?, ?)',
+          [user_id, work_name]
+      )
+      await db.commit()
+      return True
+  else:
+      return False
   
 async def create_user_favourite_song(user_id, author, song_name):
-  await cur.execute('INSERT INTO users_favourite_songs(user_id, author, work_name) VALUES (?, ?, ?)', [user_id, author, song_name])
-  await db.commit() #Сохраняем изменения в таблицу
+  # Проверяем, не существует ли уже запись
+  await cur.execute(
+      'SELECT id FROM users_favourite_songs WHERE user_id = ? AND work_name = ? AND author = ?',
+      [user_id, song_name, author]
+  )
+  result = await cur.fetchone()
+  if not result:
+      await cur.execute('INSERT INTO users_favourite_songs(user_id, author, work_name) VALUES (?, ?, ?)', [user_id, author, song_name])
+      await db.commit()
+      return True
+  else:
+      return False
   
 async def create_user_favourite_book(user_id, work_name):
-  await cur.execute('INSERT INTO users_favourite_books(user_id, work_name) VALUES (?, ?)', [user_id, work_name])
-  await db.commit() #Сохраняем изменения в таблицу
+  # Проверяем, не существует ли уже запись
+  await cur.execute(
+      'SELECT id FROM users_favourite_books WHERE user_id = ? AND work_name = ?',
+      [user_id, work_name]
+  )
+  result = await cur.fetchone()
+  if not result:
+      await cur.execute('INSERT INTO users_favourite_books(user_id, work_name) VALUES (?, ?)', [user_id, work_name])
+      await db.commit()
+      return True
+  else:
+      return False
   
 #GetAllFavourite
 async def get_all_favourite_films(user_id):
@@ -165,6 +198,48 @@ async def get_all_favourite_books(user_id):
   favourite_books = await cur.fetchall()
   return map(lambda el: el[2],favourite_books)
 
+#Delete from favourite
+async def delete_favourite_film(user_id, work_name):
+    try:
+        await cur.execute(
+            'DELETE FROM users_favourite_films WHERE user_id = ? AND work_name = ?',
+            [user_id, work_name]
+        )
+        await db.commit()
+        # Проверяем, была ли удалена хотя бы одна строка
+        return cur.rowcount > 0
+    except Exception as e:
+        # Откатываем изменения в случае ошибки
+        await db.rollback()
+        return False
+      
+async def delete_favourite_song(user_id, work_name):
+    try:
+        await cur.execute(
+            'DELETE FROM users_favourite_songs WHERE user_id = ? AND work_name = ?',
+            [user_id, work_name]
+        )
+        await db.commit()
+        # Проверяем, была ли удалена хотя бы одна строка
+        return cur.rowcount > 0
+    except Exception as e:
+        # Откатываем изменения в случае ошибки
+        await db.rollback()
+        return False
+      
+async def delete_favourite_book(user_id, work_name):
+    try:
+        await cur.execute(
+            'DELETE FROM users_favourite_books WHERE user_id = ? AND work_name = ?',
+            [user_id, work_name]
+        )
+        await db.commit()
+        # Проверяем, была ли удалена хотя бы одна строка
+        return cur.rowcount > 0
+    except Exception as e:
+        # Откатываем изменения в случае ошибки
+        await db.rollback()
+        return False
 
 #CreateRecommended
 async def create_user_recommended_film(user_id, work_name):
@@ -306,6 +381,32 @@ async def check_user_is_full_registered(user_id):
       return False
   else:
     return False
+  
+async def delete_profile(user_id):
+    tables = [
+        'users',
+        'users_favourite_films',
+        'users_favourite_songs',
+        'users_favourite_books',
+        'users_recommended_films',
+        'users_recommended_songs',
+        'users_recommended_books',
+        'users_film_likes',
+        'users_film_dislikes',
+        'users_song_likes',
+        'users_song_dislikes',
+        'users_book_likes',
+        'users_book_dislikes'
+    ]
+    
+    for table in tables:
+        if table == 'users':
+            await cur.execute(f'DELETE FROM {table} WHERE tg_id = ?', (user_id,))
+        else:
+            await cur.execute(f'DELETE FROM {table} WHERE user_id = ?', (user_id,))
+    
+    await db.commit()
+      
 
 # #Добавление цвета в таблицу users_colors
 # async def create_user_color(user_id, request_text, text_with_color):
